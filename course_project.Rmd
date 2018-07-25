@@ -1,0 +1,87 @@
+---
+title: "Prediction Assignment Writeup"
+author: "HH"
+date: "July 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+The goal of this project is to predict the manner in which subject under examination did the exercise. This project uses data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Loading required library and dataset
+```{r warning=FALSE, echo=TRUE}
+library(ggplot2)
+library(caret)
+library(parallel)
+library(doParallel)
+
+if(!file.exists("../data_set")){dir.create("../data_set")}
+training_data_set_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(training_data_set_url,
+              destfile="../data_set/pml-training.csv")
+weightLifting = read.csv("../data_set/pml-training.csv")
+
+test_case_data_set_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(test_case_data_set_url,
+              destfile="../data_set/pml-testing.csv")
+test_case = read.csv("../data_set/pml-testing.csv")
+
+```
+## Exploratory Data Analysis
+Observe the training data.
+```{r warning=FALSE, echo=TRUE}
+str(weightLifting)
+```
+
+## Processing Data
+Remove zero covariates.
+```{r warning=FALSE, echo=TRUE}
+nsv <- nearZeroVar(weightLifting)
+weightLifting <- weightLifting[, -nsv]
+```
+Remove mostly NA covariates.
+```{r warning=FALSE, echo=TRUE}
+mostlyNA <- sapply(weightLifting, function(x) mean(is.na(x))) > 0.95
+weightLifting <- weightLifting[, mostlyNA==FALSE]
+```
+Remove non-orientation data clumuns (clumun from 1 to 7).
+```{r warning=FALSE, echo=TRUE}
+weightLifting <- weightLifting[, -(1:7)]
+```
+## Partitioning the training dataset
+```{r warning=FALSE, echo=TRUE}
+inTrain <- createDataPartition(y=weightLifting$classe,
+                               p=0.7, list=FALSE)
+training <- weightLifting[inTrain,]
+testing <- weightLifting[-inTrain,]
+dim(training)
+dim(testing)
+```
+## Data prediction modelling
+```{r warning=FALSE, echo=TRUE}
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+modFit <- train(classe~., method="rf",data=training,trControl = fitControl)
+
+predict_testing <- predict(modFit, testing)
+confusionMatrix(testing$classe, predict_testing)
+accuracy <- postResample(predict_testing, testing$classe)
+error<-1 - as.numeric(confusionMatrix(testing$classe, predict_testing)$overall[1])
+```
+This models accuracy is `r accuracy*100`% and the out-of-sample error setimation is `r error*100`%.
+
+## Predictions on the test data
+```{r warning=FALSE, echo=TRUE}
+prediction_test_case <- predict(modFit,test_case)
+print(prediction_test_case)
+```
+
+
